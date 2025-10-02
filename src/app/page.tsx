@@ -1,103 +1,353 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useCallback } from 'react';
+import { useKeyboardListener } from '@/hooks/useKeyboardListener';
+import { ApiClient } from '@/lib/api-client';
+import { SynthesisWorkflow } from '@/lib/synthesis-workflow';
+
+interface Entry {
+  id: string;
+  data: any;
+  metadata: any;
+  parent_id?: string;
+}
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [currentEntry, setCurrentEntry] = useState<Entry | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [synthesisResults, setSynthesisResults] = useState<string[]>([]);
+  const [generatedTopics, setGeneratedTopics] = useState<string[]>([]);
+  const [selectedTopics, setSelectedTopics] = useState<Set<string>>(new Set());
+  const [searchResults, setSearchResults] = useState<{[topic: string]: Entry[]}>({});
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+  const apiClient = new ApiClient();
+  const synthesisWorkflow = new SynthesisWorkflow();
+
+  const fetchRandomEntry = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const response = await apiClient.random(1);
+      console.log('API response:', response);
+
+      // Handle both direct array response and wrapped response
+      const entries = Array.isArray(response) ? response : response.data || response;
+
+      if (entries && entries.length > 0) {
+        const entry = entries[0];
+        console.log('Setting entry:', entry);
+        setCurrentEntry(entry);
+        setSynthesisResults([]);
+        setGeneratedTopics([]);
+        setSelectedTopics(new Set());
+        setSearchResults({});
+      } else {
+        console.log('No entries found in response');
+      }
+    } catch (error) {
+      console.error('Error fetching random entry:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const generateTopics = useCallback(async () => {
+    if (!currentEntry) return;
+
+    setIsLoading(true);
+    setSynthesisResults(['Generating topics...']);
+
+    try {
+      const topics = await synthesisWorkflow.generateTopicsFromContent(
+        typeof currentEntry.data === 'string' ? currentEntry.data : JSON.stringify(currentEntry.data),
+        generatedTopics
+      );
+      setGeneratedTopics(topics);
+      setSynthesisResults([`Generated ${topics.length} topics. Review and select topics to process.`]);
+    } catch (error) {
+      console.error('Error generating topics:', error);
+      setSynthesisResults([`Error generating topics: ${error}`]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentEntry, generatedTopics]);
+
+  const expandTopic = useCallback(async (selectedTopic: string) => {
+    setIsLoading(true);
+    setSynthesisResults(prev => [...prev, `Expanding topic: "${selectedTopic}"`]);
+
+    try {
+      const newTopics = await synthesisWorkflow.generateTopicsFromContent(
+        selectedTopic,
+        generatedTopics
+      );
+
+      const uniqueNewTopics = newTopics.filter(topic =>
+        !generatedTopics.some(existing => existing.toLowerCase() === topic.toLowerCase())
+      );
+
+      if (uniqueNewTopics.length > 0) {
+        setGeneratedTopics(prev => [...prev, ...uniqueNewTopics]);
+        setSynthesisResults(prev => [...prev, `Added ${uniqueNewTopics.length} new subtopics for "${selectedTopic}"`]);
+      } else {
+        setSynthesisResults(prev => [...prev, `No new subtopics found for "${selectedTopic}"`]);
+      }
+    } catch (error) {
+      console.error('Error expanding topic:', error);
+      setSynthesisResults(prev => [...prev, `Error expanding "${selectedTopic}": ${error}`]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [generatedTopics]);
+
+  const toggleTopicSelection = (topic: string) => {
+    setSelectedTopics(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(topic)) {
+        newSet.delete(topic);
+      } else {
+        newSet.add(topic);
+      }
+      return newSet;
+    });
+  };
+
+  const searchSelectedTopics = useCallback(async () => {
+    if (!currentEntry || selectedTopics.size === 0) return;
+
+    setIsLoading(true);
+    setSynthesisResults([`Searching for ${selectedTopics.size} selected topics...`]);
+    setSearchResults({});
+
+    const newResults: {[topic: string]: Entry[]} = {};
+
+    try {
+      for (const topic of Array.from(selectedTopics)) {
+        setSynthesisResults(prev => [...prev, `Searching for: "${topic}"`]);
+
+        const response = await apiClient.search(topic, 10);
+        const entries = Array.isArray(response) ? response : response.data || response;
+
+        if (entries && entries.length > 0) {
+          newResults[topic] = entries;
+          setSynthesisResults(prev => [...prev, `Found ${entries.length} entries for "${topic}"`]);
+        } else {
+          newResults[topic] = [];
+          setSynthesisResults(prev => [...prev, `No entries found for "${topic}"`]);
+        }
+      }
+
+      setSearchResults(newResults);
+      setSynthesisResults(prev => [...prev, 'Search completed! Review results below.']);
+    } catch (error) {
+      console.error('Error searching topics:', error);
+      setSynthesisResults(prev => [...prev, `Error: ${error}`]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentEntry, selectedTopics]);
+
+  const joinWithOriginal = useCallback(async (resultEntryId: string, topic: string) => {
+    if (!currentEntry) return;
+
+    setIsLoading(true);
+    setSynthesisResults(prev => [...prev, `Joining entry ${resultEntryId} with original entry...`]);
+
+    try {
+      const joinResult = await apiClient.joinEntries(currentEntry.id, resultEntryId);
+
+      if (joinResult) {
+        setSynthesisResults(prev => [
+          ...prev,
+          `✓ Successfully joined ${currentEntry.id} + ${resultEntryId} for topic "${topic}"`
+        ]);
+      } else {
+        setSynthesisResults(prev => [
+          ...prev,
+          `✗ Failed to join entries for topic "${topic}"`
+        ]);
+      }
+    } catch (error) {
+      console.error('Error joining entries:', error);
+      setSynthesisResults(prev => [...prev, `✗ Error joining entries: ${error}`]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentEntry]);
+
+  useKeyboardListener({
+    onRandomEntry: fetchRandomEntry,
+  });
+
+  return (
+    <div className="font-sans min-h-screen p-8 max-w-4xl mx-auto">
+      <header className="mb-8">
+        <h1 className="text-3xl font-bold mb-4">Synthesis Topic Test</h1>
+        <p className="text-gray-600 dark:text-gray-400">
+          Press <kbd className="px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded text-sm font-mono">R</kbd> for random entry
+        </p>
+      </header>
+
+      <main className="space-y-8">
+        <div className="flex gap-4">
+          <button
+            onClick={fetchRandomEntry}
+            disabled={isLoading}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            {isLoading ? 'Loading...' : 'Get Random Entry'}
+          </button>
+
+          <button
+            onClick={generateTopics}
+            disabled={isLoading || !currentEntry}
+            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
           >
-            Read our docs
-          </a>
+            Generate Topics
+          </button>
+
+          <button
+            onClick={searchSelectedTopics}
+            disabled={isLoading || selectedTopics.size === 0}
+            className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+          >
+            Search Selected ({selectedTopics.size})
+          </button>
         </div>
+
+        {currentEntry && (
+          <div className="border rounded-lg p-6 bg-gray-50 dark:bg-gray-800">
+            <h2 className="text-xl font-semibold mb-4">Current Entry</h2>
+            <div className="space-y-2">
+              <p><strong>ID:</strong> {currentEntry.id}</p>
+              <div>
+                <strong>Data:</strong>
+                <pre className="mt-2 p-3 bg-white dark:bg-gray-900 rounded text-sm overflow-auto">
+                  {JSON.stringify(currentEntry.data, null, 2)}
+                </pre>
+              </div>
+              <div>
+                <strong>Metadata:</strong>
+                <pre className="mt-2 p-3 bg-white dark:bg-gray-900 rounded text-sm overflow-auto">
+                  {JSON.stringify(currentEntry.metadata, null, 2)}
+                </pre>
+              </div>
+              {currentEntry.parent_id && (
+                <p><strong>Parent ID:</strong> {currentEntry.parent_id}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {generatedTopics.length > 0 && (
+          <div className="border rounded-lg p-6 bg-blue-50 dark:bg-blue-900/20">
+            <h2 className="text-xl font-semibold mb-4">Generated Topics</h2>
+            <div className="grid grid-cols-1 gap-2">
+              {generatedTopics.map((topic, index) => (
+                <div key={index} className="flex items-center justify-between p-3 hover:bg-blue-100 dark:hover:bg-blue-800/30 rounded border">
+                  <label className="flex items-center space-x-2 cursor-pointer flex-1">
+                    <input
+                      type="checkbox"
+                      checked={selectedTopics.has(topic)}
+                      onChange={() => toggleTopicSelection(topic)}
+                      className="rounded"
+                    />
+                    <span className="text-sm flex-1">{topic}</span>
+                  </label>
+                  <button
+                    onClick={() => expandTopic(topic)}
+                    disabled={isLoading}
+                    className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 ml-2"
+                    title="Expand this topic to generate subtopics"
+                  >
+                    Expand
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={() => setSelectedTopics(new Set(generatedTopics))}
+                className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Select All
+              </button>
+              <button
+                onClick={() => setSelectedTopics(new Set())}
+                className="px-3 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-700"
+              >
+                Clear All
+              </button>
+            </div>
+          </div>
+        )}
+
+        {Object.keys(searchResults).length > 0 && (
+          <div className="space-y-4">
+            {Object.entries(searchResults).map(([topic, entries]) => (
+              <div key={topic} className="border rounded-lg p-6 bg-green-50 dark:bg-green-900/20">
+                <h3 className="text-lg font-semibold mb-4">
+                  Search Results for "{topic}" ({entries.length} found)
+                </h3>
+                {entries.length > 0 ? (
+                  <div className="space-y-3">
+                    {entries.map((entry, index) => (
+                      <div key={entry.id} className="border rounded p-3 bg-white dark:bg-gray-800">
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="text-sm font-mono text-gray-500">
+                            {entry.id}
+                          </span>
+                          <button
+                            onClick={() => joinWithOriginal(entry.id, topic)}
+                            disabled={isLoading}
+                            className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            Join with Original
+                          </button>
+                        </div>
+                        <div className="text-sm">
+                          <strong>Data:</strong>
+                          <pre className="mt-1 p-2 bg-gray-100 dark:bg-gray-700 rounded text-xs overflow-auto max-h-20">
+                            {typeof entry.data === 'string' ? entry.data : JSON.stringify(entry.data, null, 2)}
+                          </pre>
+                        </div>
+                        {entry.metadata && (
+                          <div className="text-sm mt-2">
+                            <strong>Metadata:</strong>
+                            <pre className="mt-1 p-2 bg-gray-100 dark:bg-gray-700 rounded text-xs overflow-auto max-h-16">
+                              {JSON.stringify(entry.metadata, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-500 italic">No results found for this topic</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {synthesisResults.length > 0 && (
+          <div className="border rounded-lg p-6 bg-yellow-50 dark:bg-yellow-900/20">
+            <h2 className="text-xl font-semibold mb-4">Synthesis Results</h2>
+            <div className="space-y-2">
+              {synthesisResults.map((result, index) => (
+                <p key={index} className="text-sm font-mono">
+                  {result}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!currentEntry && !isLoading && (
+          <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+            <p>No entry loaded. Press R or click "Get Random Entry" to start.</p>
+          </div>
+        )}
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
     </div>
   );
 }
