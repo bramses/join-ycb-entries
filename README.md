@@ -2,6 +2,14 @@
 
 A web application for exploring and connecting knowledge through AI-powered topic generation and semantic search. This tool helps you discover relationships between ideas by generating topics from text content and finding related entries in your knowledge base.
 
+<img width="3438" height="1614" alt="Screenshot 2025-10-02 19-44-01" src="https://github.com/user-attachments/assets/34cb6bbb-01fd-4bd1-9172-06764129675a" />
+<img width="3442" height="1610" alt="Screenshot 2025-10-02 19-44-17" src="https://github.com/user-attachments/assets/ae1857a3-d081-4225-9a1a-d64b8e859399" />
+<img width="3444" height="1624" alt="Screenshot 2025-10-02 19-44-37" src="https://github.com/user-attachments/assets/e93e10ff-b556-448a-bb9f-4755c823e095" />
+<img width="3416" height="1622" alt="Screenshot 2025-10-02 19-44-26" src="https://github.com/user-attachments/assets/162e3598-2b7d-41f3-a847-c3e0a08b602b" />
+<img width="3438" height="1618" alt="Screenshot 2025-10-02 19-44-44" src="https://github.com/user-attachments/assets/baef5e08-253c-451b-8979-0848a0032de9" />
+
+
+
 ## Features
 
 - **Random Entry Loading**: Fetch random entries from your knowledge base to explore
