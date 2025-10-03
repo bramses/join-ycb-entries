@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import Image from 'next/image';
 import { useKeyboardListener } from '@/hooks/useKeyboardListener';
 import { ApiClient } from '@/lib/api-client';
 import { SynthesisWorkflow } from '@/lib/synthesis-workflow';
@@ -19,6 +20,9 @@ export default function Home() {
   const [generatedTopics, setGeneratedTopics] = useState<string[]>([]);
   const [selectedTopics, setSelectedTopics] = useState<Set<string>>(new Set());
   const [searchResults, setSearchResults] = useState<{[topic: string]: Entry[]}>({});
+  const [joinedEntries, setJoinedEntries] = useState<{originalId: string, joinedId: string, topic: string}[]>([]);
+  const [markdownOutput, setMarkdownOutput] = useState<string>('');
+  const [imageUrls, setImageUrls] = useState<{[id: string]: string}>({});
 
   const apiClient = new ApiClient();
   const synthesisWorkflow = new SynthesisWorkflow();
@@ -40,6 +44,9 @@ export default function Home() {
         setGeneratedTopics([]);
         setSelectedTopics(new Set());
         setSearchResults({});
+        setJoinedEntries([]);
+        setMarkdownOutput('');
+        setImageUrls({});
       } else {
         console.log('No entries found in response');
       }
@@ -130,6 +137,22 @@ export default function Home() {
         if (entries && entries.length > 0) {
           newResults[topic] = entries;
           setSynthesisResults(prev => [...prev, `Found ${entries.length} entries for "${topic}"`]);
+
+          // Fetch images for any image type entries
+          const imageIds = entries
+            .filter(entry => entry.metadata?.type === 'image')
+            .map(entry => entry.id);
+
+          if (imageIds.length > 0) {
+            try {
+              const imageResponse = await apiClient.fetchImagesByIds(imageIds);
+              if (imageResponse?.body?.urls) {
+                setImageUrls(prev => ({ ...prev, ...imageResponse.body.urls }));
+              }
+            } catch (error) {
+              console.error('Error fetching images:', error);
+            }
+          }
         } else {
           newResults[topic] = [];
           setSynthesisResults(prev => [...prev, `No entries found for "${topic}"`]);
@@ -146,6 +169,54 @@ export default function Home() {
     }
   }, [currentEntry, selectedTopics]);
 
+  const generateCompleteMarkdown = useCallback(async () => {
+    if (!currentEntry || joinedEntries.length === 0) return '';
+
+    try {
+      let markdown = '';
+
+      // Add original entry only once at the top
+      if (currentEntry.metadata?.type === 'image') {
+        const imageUrl = imageUrls[currentEntry.id];
+        if (imageUrl) {
+          markdown += `![${currentEntry.metadata?.title || 'Image'}](${imageUrl})\n`;
+        }
+      }
+
+      markdown += `${currentEntry.data} [from ${currentEntry.metadata?.title || 'Unknown'}](${currentEntry.metadata?.author || '#'})\n\n`;
+
+      // Add all joined entries
+      for (const joinedInfo of joinedEntries) {
+        // Find the joined entry from search results
+        let joinedEntry: Entry | null = null;
+        for (const entries of Object.values(searchResults)) {
+          const found = entries.find(e => e.id === joinedInfo.joinedId);
+          if (found) {
+            joinedEntry = found;
+            break;
+          }
+        }
+
+        if (joinedEntry) {
+          // Handle joined entry
+          if (joinedEntry.metadata?.type === 'image') {
+            const imageUrl = imageUrls[joinedEntry.id];
+            if (imageUrl) {
+              markdown += `![${joinedEntry.metadata?.title || 'Image'}](${imageUrl})\n`;
+            }
+          }
+
+          markdown += `${joinedEntry.data} [from ${joinedEntry.metadata?.title || 'Unknown'}](${joinedEntry.metadata?.author || '#'})\n\n`;
+        }
+      }
+
+      return markdown;
+    } catch (error) {
+      console.error('Error generating complete markdown:', error);
+      return '';
+    }
+  }, [currentEntry, joinedEntries, searchResults, imageUrls]);
+
   const joinWithOriginal = useCallback(async (resultEntryId: string, topic: string) => {
     if (!currentEntry) return;
 
@@ -156,6 +227,16 @@ export default function Home() {
       const joinResult = await apiClient.joinEntries(currentEntry.id, resultEntryId);
 
       if (joinResult) {
+        // Add to joined entries list
+        setJoinedEntries(prev => {
+          const newJoinedEntries = [...prev, {
+            originalId: currentEntry.id,
+            joinedId: resultEntryId,
+            topic
+          }];
+          return newJoinedEntries;
+        });
+
         setSynthesisResults(prev => [
           ...prev,
           `✓ Successfully joined ${currentEntry.id} + ${resultEntryId} for topic "${topic}"`
@@ -173,6 +254,27 @@ export default function Home() {
       setIsLoading(false);
     }
   }, [currentEntry]);
+
+  // Update markdown whenever joined entries change
+  useEffect(() => {
+    const updateMarkdown = async () => {
+      if (joinedEntries.length > 0) {
+        const markdown = await generateCompleteMarkdown();
+        setMarkdownOutput(markdown);
+      }
+    };
+    updateMarkdown();
+  }, [joinedEntries, generateCompleteMarkdown]);
+
+  const copyMarkdownToClipboard = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(markdownOutput);
+      setSynthesisResults(prev => [...prev, '✓ Markdown copied to clipboard']);
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+      setSynthesisResults(prev => [...prev, '✗ Failed to copy to clipboard']);
+    }
+  }, [markdownOutput]);
 
   useKeyboardListener({
     onRandomEntry: fetchRandomEntry,
@@ -304,6 +406,17 @@ export default function Home() {
                             Join with Original
                           </button>
                         </div>
+                        {entry.metadata?.type === 'image' && imageUrls[entry.id] && (
+                          <div className="mb-3">
+                            <Image
+                              src={imageUrls[entry.id]}
+                              alt={entry.metadata?.title || 'Entry image'}
+                              width={200}
+                              height={128}
+                              className="max-w-xs max-h-32 object-contain rounded border"
+                            />
+                          </div>
+                        )}
                         <div className="text-sm">
                           <strong>Data:</strong>
                           <pre className="mt-1 p-2 bg-gray-100 dark:bg-gray-700 rounded text-xs overflow-auto max-h-20">
@@ -339,6 +452,23 @@ export default function Home() {
                 </p>
               ))}
             </div>
+          </div>
+        )}
+
+        {markdownOutput && (
+          <div className="border rounded-lg p-6 bg-purple-50 dark:bg-purple-900/20">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">Markdown Output</h2>
+              <button
+                onClick={copyMarkdownToClipboard}
+                className="px-3 py-1 text-sm bg-purple-600 text-white rounded hover:bg-purple-700"
+              >
+                Copy to Clipboard
+              </button>
+            </div>
+            <pre className="p-4 bg-white dark:bg-gray-800 rounded text-sm overflow-auto max-h-96 border">
+              {markdownOutput}
+            </pre>
           </div>
         )}
 

@@ -102,4 +102,11 @@ export class ApiClient {
     // Return the raw response since the API seems to return data directly
     return response;
   }
+
+  async fetchImagesByIds(ids: string[]): Promise<any> {
+    return await this.makeCloudRequest('/fetchImagesByIDs', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    });
+  }
 }
