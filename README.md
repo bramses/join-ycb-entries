@@ -1,36 +1,55 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Synthesis Topic Test
 
-## Getting Started
+A web application for exploring and connecting knowledge through AI-powered topic generation and semantic search. This tool helps you discover relationships between ideas by generating topics from text content and finding related entries in your knowledge base.
 
-First, run the development server:
+## Features
 
+- **Random Entry Loading**: Fetch random entries from your knowledge base to explore
+- **AI Topic Generation**: Use OpenAI to extract key topics and concepts from text content
+- **Recursive Topic Expansion**: Generate subtopics from any topic to build comprehensive topic trees
+- **Semantic Search**: Find related entries based on topic similarity
+- **Manual Connection Control**: Review search results and selectively join entries
+- **Image Support**: Display images from entries and include them in markdown output
+- **Markdown Export**: Generate clean markdown documents with all connections for easy copying
+
+## How It Works
+
+1. Load a random entry from your knowledge base
+2. Generate topics using AI analysis of the content
+3. Expand interesting topics to discover subtopics
+4. Search for related entries using selected topics
+5. Review search results and join relevant entries
+6. Export the complete synthesis as formatted markdown
+
+## Setup
+
+1. Copy your API keys to `.env.local`:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+OPENAI_API_KEY=your_openai_key_here
+YCB_API_KEY=your_ycb_api_key_here
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install dependencies:
+```bash
+npm install
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. Run the development server:
+```bash
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4. Open [http://localhost:3000](http://localhost:3000) in your browser
 
-## Learn More
+## Usage
 
-To learn more about Next.js, take a look at the following resources:
+- Press `R` or click "Get Random Entry" to load a new entry
+- Click "Generate Topics" to extract topics using AI
+- Use "Expand" buttons to generate subtopics recursively
+- Select topics and click "Search Selected" to find related entries
+- Review search results and click "Join with Original" for relevant connections
+- Copy the generated markdown output to use elsewhere
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Technical Details
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Built with Next.js 15, React 19, TypeScript, and Tailwind CSS. Integrates with OpenAI's API for topic generation and a custom knowledge base API for entry management and semantic search.

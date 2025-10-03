@@ -132,7 +132,7 @@ export default function Home() {
         setSynthesisResults(prev => [...prev, `Searching for: "${topic}"`]);
 
         const response = await apiClient.search(topic, 10);
-        const entries = Array.isArray(response) ? response : response.data || response;
+        const entries: Entry[] = Array.isArray(response) ? response : response.data || response;
 
         if (entries && entries.length > 0) {
           newResults[topic] = entries;
@@ -140,8 +140,8 @@ export default function Home() {
 
           // Fetch images for any image type entries
           const imageIds = entries
-            .filter(entry => entry.metadata?.type === 'image')
-            .map(entry => entry.id);
+            .filter((entry: Entry) => entry.metadata?.type === 'image')
+            .map((entry: Entry) => entry.id);
 
           if (imageIds.length > 0) {
             try {
@@ -392,7 +392,7 @@ export default function Home() {
                 </h3>
                 {entries.length > 0 ? (
                   <div className="space-y-3">
-                    {entries.map((entry, index) => (
+                    {entries.map((entry) => (
                       <div key={entry.id} className="border rounded p-3 bg-white dark:bg-gray-800">
                         <div className="flex justify-between items-start mb-2">
                           <span className="text-sm font-mono text-gray-500">
